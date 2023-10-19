@@ -1,0 +1,90 @@
+#include <stdint.h>
+#include <stdbool.h>
+#include "inc/hw_types.h"
+#include "inc/hw_memmap.h"
+#include "driverlib/sysctl.h"
+#include "driverlib/pin_map.h"
+#include "driverlib/debug.h"
+#include "driverlib/gpio.h"
+
+#define GREEN_LED   GPIO_PIN_3
+#define YELLOW_LED  GPIO_PIN_2
+#define RED_LED     GPIO_PIN_1
+#define BUTTON      GPIO_PIN_4
+#define ALL_LEDS    (GREEN_LED | YELLOW_LED | RED_LED)
+
+// Variables de estado del semáforo
+enum { GREEN, YELLOW, RED, BLINKING } state = GREEN;
+uint8_t buttonPressed = 0; // Variable para el antirrebote
+
+// Función antirrebote
+void DebounceButton(void) {
+    if (GPIOPinRead(GPIO_PORTF_BASE, BUTTON) == 0) {
+        if (buttonPressed < 3) {
+            buttonPressed++;
+        }
+    } else {
+        if (buttonPressed > 0) {
+            buttonPressed--;
+        }
+    }
+}
+
+int main(void) {
+    // Configuración del reloj del sistema a 80 MHz
+    SysCtlClockSet(SYSCTL_SYSDIV_2_5 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);
+
+    // Habilitar los puertos GPIO
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+    while (!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOF)) {}
+
+    // Configurar los pines de los LEDs como salidas
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, ALL_LEDS);
+
+    // Configurar el pin del botón como entrada con pull-up
+    GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, BUTTON);
+    GPIOPadConfigSet(GPIO_PORTF_BASE, BUTTON, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);
+
+    while (1) {
+        // Control del botón con antirrebote
+        DebounceButton();
+
+        // Máquina de estado del semáforo
+        switch (state) {
+            case GREEN:
+                GPIOPinWrite(GPIO_PORTF_BASE, ALL_LEDS, GREEN_LED);
+                if (buttonPressed == 3) {
+                    state = YELLOW;
+                }
+                break;
+            case YELLOW:
+                GPIOPinWrite(GPIO_PORTF_BASE, ALL_LEDS, YELLOW_LED);
+                if (buttonPressed == 3) {
+                    state = RED;
+                }
+                break;
+            case RED:
+                GPIOPinWrite(GPIO_PORTF_BASE, ALL_LEDS, RED_LED);
+                if (buttonPressed == 3) {
+                    state = BLINKING;
+                }
+                break;
+            case BLINKING:
+                GPIOPinWrite(GPIO_PORTF_BASE, RED_LED, RED_LED);
+                if (buttonPressed == 3) {
+                    state = GREEN;
+                }
+                Delay(500000); // Retardo de 500 ms para el parpadeo
+                GPIOPinWrite(GPIO_PORTF_BASE, RED_LED, 0);
+                Delay(500000);
+                break;
+        }
+    }
+}
+
+// Función de retardo
+void Delay(uint32_t time) {
+    while (time--) {
+        // No hagas nada
+    }
+}
